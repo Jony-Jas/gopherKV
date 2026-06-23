@@ -6,12 +6,41 @@ import (
 	"strconv"
 )
 
+func Encode(value interface{}, isSimple bool) []byte {
+	switch v := value.(type) {
+	case string:
+		if isSimple {
+			return []byte(fmt.Sprintf("+%s\r\n", v))
+		}
+		return []byte(fmt.Sprintf("$%d\r\n%s\r\n", len(v), v))
+	}
+	return []byte{}
+}
+
+func DecodeArrayString(data []byte) ([]string, error) {
+	decoded, err := Decode(data)
+
+	if err != nil {
+		return nil, err
+	}
+
+	ts := decoded.([]any)
+
+	tokens := make([]string, len(ts))
+
+	for i := range tokens {
+		tokens[i] = ts[i].(string)
+	}
+
+	return tokens, nil
+}
+
 func Decode(data []byte) (any, error) {
 	if len(data) == 0 {
 		return nil, errors.New("no data")
 	}
 
-	decoded, _, err := DecodeOne(data)
+	decoded, _, err := decodeOne(data)
 	if err != nil {
 		return nil, err
 	}
@@ -19,7 +48,7 @@ func Decode(data []byte) (any, error) {
 	return decoded, nil
 }
 
-func DecodeOne(data []byte) (any, int, error) {
+func decodeOne(data []byte) (any, int, error) {
 	if len(data) == 0 {
 		return nil, 0, errors.New("no data")
 	}
@@ -110,7 +139,7 @@ func readBulkString(data []byte) (any, int, error) {
 	return str, pos + length + 2, nil
 }
 
-func readArray(data []byte) (any, int, error) {
+func readArray(data []byte) ([]any, int, error) {
 	length, pos, err := readLength(data)
 	if err != nil {
 		return nil, 0, err
@@ -129,7 +158,7 @@ func readArray(data []byte) (any, int, error) {
 			return nil, 0, errors.New("incomplete array data")
 		}
 
-		val, delta, err := DecodeOne(data[pos:])
+		val, delta, err := decodeOne(data[pos:])
 		if err != nil {
 			return nil, 0, err
 		}

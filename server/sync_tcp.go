@@ -1,12 +1,15 @@
 package server
 
 import (
+	"fmt"
 	"io"
 	"log"
 	"net"
 	"strconv"
+	"strings"
 
 	"github.com/jony-jas/gopherKV/config"
+	"github.com/jony-jas/gopherKV/core"
 )
 
 func RunSyncTCPServer() {
@@ -46,31 +49,42 @@ func RunSyncTCPServer() {
 				log.Println("err", err)
 			}
 
-			log.Println("client", conn.RemoteAddr(), "sent:", cmd)
+			log.Printf("client %s sent: %s %v\n", conn.RemoteAddr(), cmd.Cmd, cmd.Args)
 
-			if err = respond(cmd, conn); err != nil {
-				log.Print("err write:", err)
-			}
+			respond(cmd, conn)
 		}
 	}
 }
 
-func readCommand(conn net.Conn) (string, error) {
+func readCommand(conn net.Conn) (*core.RedisCmd, error) {
 	var buf []byte = make([]byte, 512)
 
 	n, err := conn.Read(buf[:])
 
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
-	return string(buf[:n]), nil
+	tokens, err := core.DecodeArrayString(buf[:n])
+
+	if err != nil {
+		return nil, err
+	}
+
+	return &core.RedisCmd{
+		Cmd: strings.ToUpper(tokens[0]),
+		Args: tokens[1:],
+	}, nil
 }
 
-func respond(cmd string, conn net.Conn) error {
-	_, err := conn.Write([]byte(cmd))
+func respond(cmd *core.RedisCmd, conn net.Conn) error {
+	err := core.EvalAndRespond(cmd, conn)
 	if err != nil {
-		return  err
+		respondError(conn, err)
 	}
 	return nil
+}
+
+func respondError(conn net.Conn, err error) {
+	conn.Write([]byte(fmt.Sprintf("-%s\r\n", err)))
 }
