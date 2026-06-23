@@ -2,10 +2,10 @@ package core
 
 import (
 	"errors"
-	"net"
+	"io"
 )
 
-func evalPING(args []string, c net.Conn) error {
+func evalPING(args []string, c io.ReadWriter) error {
 	var b []byte
 
 	if len(args) >= 2 {
@@ -22,7 +22,7 @@ func evalPING(args []string, c net.Conn) error {
 	return err
 }
 
-func EvalAndRespond(cmd *RedisCmd, c net.Conn) error {
+func EvalAndRespond(cmd *RedisCmd, c io.ReadWriter) error {
 	if cmd == nil {
 		return errors.New("ERR invalid command")
 	}

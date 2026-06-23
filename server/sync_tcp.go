@@ -56,7 +56,7 @@ func RunSyncTCPServer() {
 	}
 }
 
-func readCommand(conn net.Conn) (*core.RedisCmd, error) {
+func readCommand(conn io.ReadWriter) (*core.RedisCmd, error) {
 	var buf []byte = make([]byte, 512)
 
 	n, err := conn.Read(buf[:])
@@ -77,7 +77,7 @@ func readCommand(conn net.Conn) (*core.RedisCmd, error) {
 	}, nil
 }
 
-func respond(cmd *core.RedisCmd, conn net.Conn) error {
+func respond(cmd *core.RedisCmd, conn io.ReadWriter) error {
 	err := core.EvalAndRespond(cmd, conn)
 	if err != nil {
 		respondError(conn, err)
@@ -85,6 +85,6 @@ func respond(cmd *core.RedisCmd, conn net.Conn) error {
 	return nil
 }
 
-func respondError(conn net.Conn, err error) {
+func respondError(conn io.ReadWriter, err error) {
 	conn.Write([]byte(fmt.Sprintf("-%s\r\n", err)))
 }
