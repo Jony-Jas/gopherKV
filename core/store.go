@@ -1,6 +1,10 @@
 package core
 
-import "time"
+import (
+	"time"
+
+	"github.com/jony-jas/gopherKV/config"
+)
 
 
 var store map[string]*Obj
@@ -27,6 +31,9 @@ func NewObj(value any, durationMs int64) *Obj {
 }
 
 func Put(key string, obj *Obj) {
+	if len(store) >= config.KeysLimit {
+		evict()
+	}
 	store[key] = obj
 }
 
