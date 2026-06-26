@@ -1,8 +1,10 @@
 package server
 
 import (
+	"fmt"
 	"log"
 	"net"
+	"strings"
 	"syscall"
 	"time"
 
@@ -108,14 +110,19 @@ func RunAsyncTCPServer() error {
 				}
 			} else {
 				comm := core.FdComm{Fd: int(events[i].Fd)}
-				cmd, err := readCommand(comm)
+				cmds, err := readCommands(comm)
 				if err != nil {
 					syscall.Close(int(events[i].Fd))
 					con_clients -= 1
 					continue
 				}
-				log.Printf("client %d sent: %s %v\n", events[i].Fd, cmd.Cmd, cmd.Args)
-				respond(cmd, comm)				
+				var summary []string
+				for _, cmd := range cmds {
+					summary = append(summary, fmt.Sprintf("%s %v", cmd.Cmd, cmd.Args))
+				}
+
+				log.Printf("client %d sent: [%s]\n", comm.Fd, strings.Join(summary, " | "))
+				respond(cmds, comm)				
 			}
 		}
 	}

@@ -15,40 +15,29 @@ func Encode(value interface{}, isSimple bool) []byte {
 		return []byte(fmt.Sprintf("$%d\r\n%s\r\n", len(v), v))
 	case int, int8, int16, int32, int64:
 		return []byte(fmt.Sprintf(":%d\r\n", v))
+	case error:
+		return []byte(fmt.Sprintf("-%s\r\n", v))
 	default:
 		return RESP_NIL
 	}
 }
 
-func DecodeArrayString(data []byte) ([]string, error) {
-	decoded, err := Decode(data)
-
-	if err != nil {
-		return nil, err
-	}
-
-	ts := decoded.([]any)
-
-	tokens := make([]string, len(ts))
-
-	for i := range tokens {
-		tokens[i] = ts[i].(string)
-	}
-
-	return tokens, nil
-}
-
-func Decode(data []byte) (any, error) {
+func Decode(data []byte) ([]any, error) {
 	if len(data) == 0 {
 		return nil, errors.New("no data")
 	}
 
-	decoded, _, err := decodeOne(data)
-	if err != nil {
-		return nil, err
+	var values []any = make([]any, 0)
+	var index int = 0
+	for index < len(data) {
+		value, delta, err := decodeOne(data[index:])
+		if err != nil {
+			return values, err
+		}
+		index = index + delta
+		values = append(values, value)
 	}
-
-	return decoded, nil
+	return values, nil
 }
 
 func decodeOne(data []byte) (any, int, error) {

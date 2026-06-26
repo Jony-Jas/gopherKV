@@ -1,128 +1,111 @@
 package core
 
 import (
+	"bytes"
 	"errors"
 	"io"
 	"strconv"
 	"time"
 )
 
-var RESP_NIL []byte = []byte("$-1\r\n")
+var (
+	RESP_NIL     = []byte("$-1\r\n")
+	RESP_OK      = []byte("+OK\r\n")
+	RESP_ZERO    = []byte(":0\r\n")
+	RESP_ONE     = []byte(":1\r\n")
+	RESP_MINUS_1 = []byte(":-1\r\n")
+	RESP_MINUS_2 = []byte(":-2\r\n")
+)
 
-func evalPING(args []string, c io.ReadWriter) error {
-	var b []byte
-
-	if len(args) >= 2 {
-		return errors.New("ERR wrong number of arguments for 'ping' command")
-	}
-
-	if len(args) == 0 {
-		b = Encode("PONG", true)
-	} else {
-		b = Encode(args[0], false)
-	}
-
-	_, err := c.Write(b)
-	return err
+// Helper to quickly encode RESP errors
+func encodeError(msg string) []byte {
+	return Encode(errors.New(msg), false)
 }
 
-func evalSET(args []string, c io.ReadWriter) error {
+func evalPING(args []string) []byte {
+	if len(args) >= 2 {
+		return encodeError("ERR wrong number of arguments for 'ping' command")
+	}
+	if len(args) == 0 {
+		return Encode("PONG", true)
+	}
+	return Encode(args[0], false)
+}
+
+func evalSET(args []string) []byte {
 	if len(args) <= 1 {
-		return errors.New("ERR wrong number of arguments for 'set' command")
+		return encodeError("ERR wrong number of arguments for 'set' command")
 	}
 
-	var key, value string
+	key, value := args[0], args[1]
 	var exDurationMs int64 = -1
-
-	key, value = args[0], args[1]
 
 	for i := 2; i < len(args); i++ {
 		switch args[i] {
 		case "EX", "ex":
 			i++
 			if i == len(args) {
-				return errors.New("ERR syntax error")
+				return encodeError("ERR syntax error")
 			}
 
 			exDurationSec, err := strconv.ParseInt(args[i], 10, 64)
 			if err != nil {
-				return errors.New("ERR value is not an integer or out of range")
+				return encodeError("ERR value is not an integer or out of range")
 			}
 			exDurationMs = exDurationSec * 1000
 		default:
-			return errors.New("ERR syntax error")
+			return encodeError("ERR syntax error")
 		}
-	}	
+	}
 
-	// putting the k and value in a Hash Table
+	// put the k and value in the Hash Table
 	Put(key, NewObj(value, exDurationMs))
-	c.Write([]byte("+OK\r\n"))
-	return nil
+	return RESP_OK
 }
 
-func evalGET(args []string, c io.ReadWriter) error {
+func evalGET(args []string) []byte {
 	if len(args) != 1 {
-		return errors.New("ERR wrong number of arguments for 'get' command")
+		return encodeError("ERR wrong number of arguments for 'get' command")
 	}
 
-	var key string = args[0]
-
-	// Get the key from the hash table
+	key := args[0]
 	obj := Get(key)
 
-	// if key does not exist, return RESP encoded nil
+	// if key does not exist or has expired, return RESP encoded nil
 	if obj == nil {
-		c.Write(RESP_NIL)
-		return nil
+		return RESP_NIL
 	}
-
-	// if key already expired then return nil
 	if obj.ExpiresAt != -1 && obj.ExpiresAt <= time.Now().UnixMilli() {
-		c.Write(RESP_NIL)
-		return nil
+		return RESP_NIL
 	}
 
-	// return the RESP encoded value
-	c.Write(Encode(obj.Value, false))
-	return nil
+	return Encode(obj.Value, false)
 }
 
-func evalTTL(args []string, c io.ReadWriter) error {
+func evalTTL(args []string) []byte {
 	if len(args) != 1 {
-		return errors.New("ERR wrong number of arguments for 'ttl' command")
+		return encodeError("ERR wrong number of arguments for 'ttl' command")
 	}
 
-	var key string = args[0]
-
+	key := args[0]
 	obj := Get(key)
 
-	// if key does not exist, return RESP encoded -2 denoting key does not exist
 	if obj == nil {
-		c.Write([]byte(":-2\r\n"))
-		return nil
+		return RESP_MINUS_2
 	}
-
-	// if object exist, but no expiration is set on it then send -1
 	if obj.ExpiresAt == -1 {
-		c.Write([]byte(":-1\r\n"))
-		return nil
+		return RESP_MINUS_1
 	}
 
-	// compute the time remaining for the key to expire and
-	// return the RESP encoded form of it
 	durationMs := obj.ExpiresAt - time.Now().UnixMilli()
-
-	// if key expired i.e. key does not exist hence return -2
 	if durationMs < 0 {
-		c.Write([]byte(":-2\r\n"))
-		return nil
+		return RESP_MINUS_2
 	}
 
-	c.Write(Encode(int64(durationMs/1000), false))
-	return nil
+	return Encode(int64(durationMs/1000), false)
 }
 
-func evalDEL(args []string, c io.ReadWriter) error {
+func evalDEL(args []string) []byte {
 	var countDeleted int = 0
 
 	for _, key := range args {
@@ -131,55 +114,56 @@ func evalDEL(args []string, c io.ReadWriter) error {
 		}
 	}
 
-	c.Write(Encode(countDeleted, false))
-	return nil
+	return Encode(countDeleted, false)
 }
 
-func evalEXPIRE(args []string, c io.ReadWriter) error {
+func evalEXPIRE(args []string) []byte {
 	if len(args) <= 1 {
-		return errors.New("ERR wrong number of arguments for 'expire' command")
+		return encodeError("ERR wrong number of arguments for 'expire' command")
 	}
 
-	var key string = args[0]
+	key := args[0]
 	exDurationSec, err := strconv.ParseInt(args[1], 10, 64)
 	if err != nil {
-		return errors.New("ERR value is not an integer or out of range")
+		return encodeError("ERR value is not an integer or out of range")
 	}
 
 	obj := Get(key)
-
-	// 0 if the timeout was not set. e.g. key doesn't exist, or operation skipped due to the provided arguments
 	if obj == nil {
-		c.Write([]byte(":0\r\n"))
-		return nil
+		return RESP_ZERO
 	}
 
-	obj.ExpiresAt = time.Now().UnixMilli() + exDurationSec*1000
-
-	// 1 if the timeout was set.
-	c.Write([]byte(":1\r\n"))
-	return nil
+	obj.ExpiresAt = time.Now().UnixMilli() + (exDurationSec * 1000)
+	return RESP_ONE
 }
 
-func EvalAndRespond(cmd *RedisCmd, c io.ReadWriter) error {
-	if cmd == nil {
-		return errors.New("ERR invalid command")
+func EvalAndRespond(cmds RedisCmds, c io.ReadWriter) {
+	// safely handle empty slices
+	if len(cmds) == 0 {
+		c.Write(encodeError("ERR invalid command"))
+		return
 	}
 
-	switch cmd.Cmd {
-	case "PING":
-		return evalPING(cmd.Args, c)
-	case "SET":
-		return evalSET(cmd.Args, c)
-	case "GET":
-		return evalGET(cmd.Args, c)
-	case "TTL":
-		return evalTTL(cmd.Args, c)
-	case "DEL":
-		return evalDEL(cmd.Args, c)
-	case "EXPIRE":
-		return evalEXPIRE(cmd.Args, c)
-	default:
-		return evalPING(cmd.Args, c)
+	var buf bytes.Buffer
+
+	for _, cmd := range cmds {
+		switch cmd.Cmd {
+		case "PING":
+			buf.Write(evalPING(cmd.Args))
+		case "SET":
+			buf.Write(evalSET(cmd.Args))
+		case "GET":
+			buf.Write(evalGET(cmd.Args))
+		case "TTL":
+			buf.Write(evalTTL(cmd.Args))
+		case "DEL":
+			buf.Write(evalDEL(cmd.Args))
+		case "EXPIRE":
+			buf.Write(evalEXPIRE(cmd.Args))
+		default:
+			buf.Write(evalPING(cmd.Args))
+		}
 	}
+
+	c.Write(buf.Bytes())
 }
