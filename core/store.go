@@ -30,6 +30,21 @@ func Put(key string, obj *Obj) {
 	store[key] = obj
 }
 
-func Get(key string) *Obj {
-	return store[key]
+func Get(k string) *Obj {
+	v := store[k]
+	if v != nil {
+		if v.ExpiresAt != -1 && v.ExpiresAt <= time.Now().UnixMilli() {
+			delete(store, k)
+			return nil
+		}
+	}
+	return v
+}
+
+func Del(k string) bool {
+	if _, ok := store[k]; ok {
+		delete(store, k)
+		return true
+	}
+	return false
 }
