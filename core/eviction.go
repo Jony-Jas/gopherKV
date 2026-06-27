@@ -1,6 +1,10 @@
 package core
 
-import "github.com/jony-jas/gopherKV/config"
+import (
+	"time"
+
+	"github.com/jony-jas/gopherKV/config"
+)
 
 // TODO: Make it efficient by doing thorough sampling
 func evictFirst() {
@@ -9,6 +13,47 @@ func evictFirst() {
 		return
 	}
 }
+
+/*
+ *  The approximated LRU algorithm
+ */
+func getCurrentClock() uint32 {
+	return uint32(time.Now().Unix()) & 0x00FFFFFF
+}
+
+func getIdleTime(lastAccessedAt uint32) uint32 {
+	c := getCurrentClock()
+	if c >= lastAccessedAt {
+		return c - lastAccessedAt
+	}
+	return (0x00FFFFFF - lastAccessedAt) + c
+}
+
+func populateEvictionPool() {
+	sampleSize := 5
+	for k := range store {
+		ePool.Push(k, store[k].LastAccessedAt)
+		sampleSize--
+		if sampleSize == 0 {
+			break
+		}
+	}
+}
+
+// TODO: no need to populate everytime. should populate
+// only when the number of keys to evict is less than what we have in the pool
+func evictAllkeysLRU() {
+	populateEvictionPool()
+	evictCount := int16(config.EvictionRatio * float64(config.KeysLimit))
+	for i := 0; i < int(evictCount) && len(ePool.pool) > 0; i++ {
+		item := ePool.Pop()
+		if item == nil {
+			return
+		}
+		Del(item.key)
+	}
+}
+
 
 // Randomly removes keys to make space for the new data added.
 // The number of keys removed will be sufficient to free up least 10% space
@@ -33,5 +78,7 @@ func evict() {
 		evictFirst()
 	case "ALL_KEYS_RANDOM":
 		evictAllkeysRandom()
+	case "ALL_KEYS_LRU":
+		evictAllkeysLRU()
 	}
 }
