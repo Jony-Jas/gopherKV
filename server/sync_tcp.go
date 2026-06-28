@@ -3,63 +3,59 @@ package server
 import (
 	"fmt"
 	"io"
-	"log"
-	"net"
-	"strconv"
 	"strings"
 
-	"github.com/jony-jas/gopherKV/config"
 	"github.com/jony-jas/gopherKV/core"
 )
 
-func RunSyncTCPServer() {
-	log.Println("Starting a synchronous TCP server on", config.Host, config.Port)
-	
-	con_client_cnt := 0
-	host := config.Host
-	port := strconv.Itoa(config.Port);
+// func RunSyncTCPServer() {
+// 	log.Println("Starting a synchronous TCP server on", config.Host, config.Port)
 
-	lsnr, err := net.Listen("tcp", host+":"+port)
+// 	con_client_cnt := 0
+// 	host := config.Host
+// 	port := strconv.Itoa(config.Port);
 
-	if (err != nil) {
-		panic(err)
-	}
+// 	lsnr, err := net.Listen("tcp", host+":"+port)
 
-	for {
-		conn, err := lsnr.Accept()
+// 	if (err != nil) {
+// 		panic(err)
+// 	}
 
-		if err != nil {
-			panic(err)
-		}
+// 	for {
+// 		conn, err := lsnr.Accept()
 
-		con_client_cnt += 1
-		log.Println("client connected with address:", conn.RemoteAddr(), "active clients", con_client_cnt)
-		
-		for {
+// 		if err != nil {
+// 			panic(err)
+// 		}
 
-			cmds, err := readCommands(conn)
+// 		con_client_cnt += 1
+// 		log.Println("client connected with address:", conn.RemoteAddr(), "active clients", con_client_cnt)
 
-			if (err != nil) {
-				conn.Close()
-				con_client_cnt -= 1
-				log.Println("client disconnected", conn.RemoteAddr(), "concurrent clients", con_client_cnt)
-				if err == io.EOF {
-					break
-				}
-				log.Println("err", err)
-			}
+// 		for {
 
-			var summary []string
-			for _, cmd := range cmds {
-				summary = append(summary, fmt.Sprintf("%s %v", cmd.Cmd, cmd.Args))
-			}
+// 			cmds, err := readCommands(conn)
 
-			log.Printf("client %s sent: [%s]\n", conn.RemoteAddr(), strings.Join(summary, " | "))
+// 			if (err != nil) {
+// 				conn.Close()
+// 				con_client_cnt -= 1
+// 				log.Println("client disconnected", conn.RemoteAddr(), "concurrent clients", con_client_cnt)
+// 				if err == io.EOF {
+// 					break
+// 				}
+// 				log.Println("err", err)
+// 			}
 
-			respond(cmds, conn)
-		}
-	}
-}
+// 			var summary []string
+// 			for _, cmd := range cmds {
+// 				summary = append(summary, fmt.Sprintf("%s %v", cmd.Cmd, cmd.Args))
+// 			}
+
+// 			log.Printf("client %s sent: [%s]\n", conn.RemoteAddr(), strings.Join(summary, " | "))
+
+// 			respond(cmds, conn)
+// 		}
+// 	}
+// }
 
 // TODO: Max read in one shot is 512 bytes
 // To allow input > 512 bytes, then repeated read until
@@ -101,8 +97,8 @@ func toArrayString(ai []any) ([]string, error) {
 	return as, nil
 }
 
-func respond(cmd core.RedisCmds, conn io.ReadWriter) {
-	core.EvalAndRespond(cmd, conn)
+func respond(cmd core.RedisCmds, c *core.Client) {
+	core.EvalAndRespond(cmd, c)
 }
 
 func respondError(conn io.ReadWriter, err error) {
